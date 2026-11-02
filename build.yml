@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.6.0
+
+      - name: Build jar
+        run: gradle build --no-daemon
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: bigger-bundles-jar
+          path: build/libs/*.jar
+
+      - name: Dump Minecraft sources
+        if: always()
+        continue-on-error: true
+        run: |
+          gradle genSources --no-daemon
+          mkdir -p dump
+          for jar in $(find ~/.gradle /home/runner -name '*sources*.jar' 2>/dev/null | grep -i minecraft | head -5); do
+            unzip -o -q "$jar" 'net/minecraft/client/gui/*' -d dump || true
+          done
+          find dump -type f | wc -l
+
+      - name: Show client bundle sources
+        if: always()
+        run: |
+          for f in $(find dump -name 'ClientBundleTooltip*.java' -o -name 'BundleMouseActions*.java' -o -name 'ItemSlotMouseAction*.java' -o -name 'ScrollWheelHandler*.java'); do
+            echo "=================== $f"
+            cat "$f"
+          done
+          F=$(find dump -name AbstractContainerScreen.java | head -1)
+          echo "=================== $F (Auszug)"
+          grep -n -B2 -A22 'itemSlotMouseActions\|boolean keyPressed\|boolean mouseScrolled' "$F"
